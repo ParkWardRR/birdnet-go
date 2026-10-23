@@ -415,6 +415,8 @@
     snapshot ? snapshot.backends.openvino : null
   );
 
+  let cuda = $derived(snapshot?.backends.cuda ?? null);
+
   // Reason codes are produced by the backend hardware probe (the Reason*
   // constants in internal/hwprofile/hwprofile.go). The mapping is an explicit
   // switch rather than a key built from the code, so every translation key
@@ -804,6 +806,23 @@
               {#if openvino.supported && openvino.devices && openvino.devices.length > 0}
                 <span class="text-xs text-muted">{t('system.inference.devices')}:</span>
                 {#each openvino.devices as device}
+                  <Badge variant="neutral" size="sm" text={device} />
+                {/each}
+              {/if}
+            </div>
+          {/if}
+
+          {#if cuda && cuda.requested}
+            <div class="flex items-center gap-3 flex-wrap">
+              <span class="text-sm min-w-32">{t('system.inference.backendCuda')}</span>
+              {#if cuda.active}
+                <StatusPill variant="success" label={t('system.inference.active')} size="xs" />
+              {:else}
+                <StatusPill variant="neutral" label={t('system.inference.inactive')} size="xs" />
+              {/if}
+              {#if cuda.devices && cuda.devices.length > 0}
+                <span class="text-xs text-muted">{t('system.inference.devices')}:</span>
+                {#each cuda.devices as device}
                   <Badge variant="neutral" size="sm" text={device} />
                 {/each}
               {/if}

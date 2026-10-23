@@ -178,6 +178,18 @@ type BackendsInfo struct {
 	TFLite   BackendStatus         `json:"tflite"`
 	ONNX     BackendStatus         `json:"onnx"`
 	OpenVINO OpenVINOBackendStatus `json:"openvino"`
+	// CUDA is the ONNX Runtime CUDA/TensorRT execution provider (local patch,
+	// enabled with BIRDNET_ORT_EP).
+	CUDA CUDABackendStatus `json:"cuda"`
+}
+
+// CUDABackendStatus reports the ONNX Runtime GPU execution provider.
+type CUDABackendStatus struct {
+	Requested bool     `json:"requested"`
+	Provider  string   `json:"provider,omitempty"`
+	Active    bool     `json:"active"`
+	Sessions  int      `json:"sessions"`
+	Devices   []string `json:"devices,omitempty"`
 }
 
 // BackendStatus reports whether an inference backend is available and initialized.
@@ -532,6 +544,8 @@ func (c *Handler) GetInferenceStatus(ctx echo.Context) error {
 	resp.Backends.ONNX = BackendStatus{Available: ort.Available, Initialized: ort.Initialized, Version: ort.Version}
 	ov := inference.CheckOpenVINOAvailability()
 	resp.Backends.OpenVINO = OpenVINOBackendStatus{Supported: ov.Supported, Active: ov.Active}
+	cuda := inference.CUDAStatus()
+	resp.Backends.CUDA = CUDABackendStatus{Requested: cuda.Requested, Provider: cuda.Provider, Active: cuda.Active, Sessions: cuda.Sessions, Devices: cuda.Devices}
 	if ov.Supported {
 		for _, d := range []string{deviceCPU, deviceGPU} {
 			if inference.OpenVINOHasDevice(d) {
@@ -562,6 +576,7 @@ func (c *Handler) GetInferenceStatus(ctx echo.Context) error {
 	})
 	envType, _ := sysinfo.GetEnvironment() // detail (sub-type) intentionally omitted in Phase 1
 	resp.Hardware = buildHardwareInfo(profile, envType)
+	applyCUDAToAccelerators(resp.Hardware.Accelerators, cuda)
 
 	// Models: fetch loaded model list, RSS, and inference counters.
 	var infos []classifier.ModelInfo
@@ -970,4 +985,34 @@ func (c *Handler) runningModelsBySource() map[string]map[string]bool {
 		out[src.DisplayName] = models
 	}
 	return out
+}
+
+// applyCUDAToAccelerators corrects the NVIDIA entries of the hardware card when
+// the ONNX Runtime CUDA execution provider is in use: the upstream probe marks
+// every non-Intel GPU "no-runtime", which is wrong once models run on it. It also
+// replaces the generic PCI-ID name with the driver's model name when known.
+func applyCUDAToAccelerators(accs []AcceleratorInfo, cuda inference.CUDAStatusInfo) {
+	if !cuda.Active {
+		return
+	}
+	n := 0
+	for i := range accs {
+		if accs[i].Vendor != "nvidia" {
+			continue
+		}
+		reasons := accs[i].Reasons[:0]
+		for _, r := range accs[i].Reasons {
+			if r != "no-runtime" {
+				reasons = append(reasons, r)
+			}
+		}
+		if len(reasons) == 0 {
+			reasons = nil
+		}
+		accs[i].Reasons = reasons
+		if n < len(cuda.Devices) {
+			accs[i].Name = "NVIDIA " + cuda.Devices[n]
+		}
+		n++
+	}
 }

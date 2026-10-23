@@ -126,7 +126,7 @@ func NewBirdNETV3(cfg *BirdNETV3Config) (*BirdNETV3, error) {
 		// ONNX Runtime runs BirdNET v3.0 on the CPU execution provider, executing the
 		// model file as-is: surface the weight precision detected from the filename
 		// (e.g. FP16 for a *_fp16.onnx file; empty when no token).
-		device = deviceCPU
+		device = inference.ORTDevice(classifier)
 		backend = BackendONNX
 		precision = string(detectQuantization(cfg.ModelPath))
 	}

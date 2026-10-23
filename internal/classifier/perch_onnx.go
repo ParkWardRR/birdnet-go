@@ -131,7 +131,7 @@ func NewPerch(cfg *PerchConfig) (*Perch, error) {
 		// ONNX Runtime currently runs Perch on the CPU execution provider, executing
 		// the model file as-is: surface the weight precision detected from the
 		// filename (e.g. INT8 for perch_v2_int8_arm.onnx; empty when no token).
-		device = deviceCPU
+		device = inference.ORTDevice(classifier)
 		backend = BackendONNX
 		precision = string(detectQuantization(cfg.ModelPath))
 	}

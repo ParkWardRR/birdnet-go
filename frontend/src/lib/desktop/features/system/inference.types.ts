@@ -99,11 +99,21 @@ export interface OpenVINOBackendStatus {
   devices?: string[];
 }
 
+/** ONNX Runtime CUDA/TensorRT execution provider (local patch, BIRDNET_ORT_EP). */
+export interface CUDABackendStatus {
+  requested: boolean;
+  provider?: string;
+  active: boolean;
+  sessions: number;
+  devices?: string[];
+}
+
 /** Status for each supported inference backend. */
 export interface InferenceBackends {
   tflite: BackendStatus;
   onnx: BackendStatus;
   openvino: OpenVINOBackendStatus;
+  cuda?: CUDABackendStatus;
 }
 
 /** Audio input spec a model expects. */

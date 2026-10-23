@@ -1782,6 +1782,7 @@
       "backendTflite": "TensorFlow Lite",
       "backendOnnx": "ONNX Runtime",
       "backendOpenvino": "OpenVINO",
+      "backendCuda": "CUDA (ONNX Runtime)",
       "available": "Tilgjengelig",
       "notAvailable": "Ikke tilgjengelig",
       "active": "Aktiv",

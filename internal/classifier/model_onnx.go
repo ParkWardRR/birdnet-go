@@ -82,7 +82,7 @@ func (bn *BirdNET) initializeONNXModel() error {
 	// ONNX Runtime executes the model file as-is, so the runtime precision is the
 	// weight precision recorded in ModelInfo.Quantization (e.g. INT8 for the arm64
 	// int8 variant, FP32 for an fp32 ONNX model).
-	bn.setRuntimeInfo(deviceCPU, BackendONNX, string(bn.ModelInfo.Quantization))
+	bn.setRuntimeInfo(inference.ORTDevice(classifier), BackendONNX, string(bn.ModelInfo.Quantization))
 
 	log.Info("ONNX model initialized",
 		logger.String("model", modelPath),

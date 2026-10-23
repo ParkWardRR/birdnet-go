@@ -39,6 +39,8 @@ type ONNXClassifierOptions struct {
 type onnxClassifier struct {
 	classifier *ort.Classifier
 	numSpecies int
+	// provider is the ONNX Runtime execution provider the session is bound to.
+	provider string
 }
 
 // NewONNXClassifier creates a Classifier backed by an ONNX Runtime model.
@@ -60,6 +62,10 @@ func NewONNXClassifier(modelPath string, opts ONNXClassifierOptions) (Classifier
 	if threads <= 0 {
 		threads = runtime.NumCPU()
 	}
+	var (
+		provider    = ORTProviderCPU
+		providerErr error
+	)
 	var configErr error
 	classifierOpts = append(classifierOpts, ort.WithSessionOptions(func(so *ortlib.SessionOptions) {
 		if err := so.SetIntraOpNumThreads(threads); err != nil && configErr == nil {
@@ -68,6 +74,7 @@ func NewONNXClassifier(modelPath string, opts ONNXClassifierOptions) (Classifier
 		if err := so.SetInterOpNumThreads(threads); err != nil && configErr == nil {
 			configErr = fmt.Errorf("failed to set InterOpNumThreads to %d: %w", threads, err)
 		}
+		provider, providerErr = appendORTProvider(so)
 	}))
 	classifier, err := ort.NewClassifier(modelPath, classifierOpts...)
 	if err != nil {
@@ -78,9 +85,15 @@ func NewONNXClassifier(modelPath string, opts ONNXClassifierOptions) (Classifier
 		return nil, fmt.Errorf("failed to configure ONNX session options: %w", configErr)
 	}
 
+	logORTProvider(modelPath, provider, providerErr)
+	if provider != ORTProviderCPU {
+		gpuSessions.Add(1)
+	}
+
 	return &onnxClassifier{
 		classifier: classifier,
 		numSpecies: len(opts.Labels),
+		provider:   provider,
 	}, nil
 }
 
@@ -100,6 +113,11 @@ func (c *onnxClassifier) PredictWithEmbeddings(samples []float32) (logits, embed
 	return c.classifier.PredictRawWithEmbeddings(samples)
 }
 
+// ExecutionProvider returns the ONNX Runtime execution provider in use.
+func (c *onnxClassifier) ExecutionProvider() string {
+	return c.provider
+}
+
 // NumSpecies returns the number of species in the model output.
 func (c *onnxClassifier) NumSpecies() int {
 	return c.numSpecies
@@ -108,6 +126,9 @@ func (c *onnxClassifier) NumSpecies() int {
 // Close releases the ONNX session resources.
 func (c *onnxClassifier) Close() {
 	if c.classifier != nil {
+		if c.provider != "" && c.provider != ORTProviderCPU {
+			gpuSessions.Add(-1)
+		}
 		_ = c.classifier.Close()
 		c.classifier = nil
 	}
