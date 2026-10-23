@@ -651,6 +651,11 @@ func (c *Handler) GetDiskInfo(ctx echo.Context) error {
 		if skipFilesystem(partition.Fstype) {
 			continue
 		}
+		// Container runtimes bind-mount single files (e.g. the NVIDIA toolkit's
+		// /usr/bin/nvidia-* and driver libraries); they are not storage.
+		if fi, err := os.Stat(partition.Mountpoint); err == nil && !fi.IsDir() {
+			continue
+		}
 		diskInfo := c.buildDiskInfo(partition, ioCounters, uptimeMs)
 		disks = append(disks, diskInfo)
 	}
