@@ -1,0 +1,19 @@
+# BirdNET-Go with ONNX Runtime CUDA for NVIDIA Pascal GPUs (sm_61, e.g. Quadro P1000,
+# GTX 10xx). See README.md in this directory.
+#
+# BASE is this branch built with the repository's own Dockerfile:
+#   podman build -t localhost/birdnet-go:cudaep-base .
+# On top of it:
+#   ort/      libonnxruntime 1.25.1 + CUDA provider built for sm_61 (build-ort-sm61.sh);
+#             replaces the image's CPU-only build of the same version.
+#   cuda/     CUDA 12.9.1 runtime libs (cudart, cuBLAS, cuFFT, cuRAND, NVRTC) and
+#             cuDNN 9.1.0.70, unpacked from NVIDIA's redist archives into cuda/opt/cuda/lib,
+#             plus cuda/etc/ld.so.conf.d/cuda.conf containing "/opt/cuda/lib".
+# Official ORT GPU builds ship sm_70+ kernels only, and cuDNN >= 9.5 has no Pascal kernels.
+# Run with the GPU (CDI): --device nvidia.com/gpu=all -e BIRDNET_ORT_EP=cuda
+# and set birdnet.backend: onnx in config.yaml.
+ARG BASE=localhost/birdnet-go:cudaep-base
+FROM ${BASE}
+COPY cuda/ /
+COPY ort/ /usr/lib/
+RUN ldconfig
