@@ -450,8 +450,10 @@ COPY --from=cuda-libs /cuda-min/doc/ /usr/share/doc/nvidia-cuda/
 RUN set -eu; \
     echo /usr/local/cuda/lib64 > /etc/ld.so.conf.d/cuda.conf; \
     ldconfig; \
-    missing=$(ldd /usr/lib/libonnxruntime_providers_cuda.so | grep "not found" || true); \
+    missing=$(ldd /usr/lib/libonnxruntime_providers_cuda.so | grep "not found" | grep -v "libcuda\.so\.1 " || true); \
     if [ -n "${missing}" ]; then echo "Error: unresolved CUDA provider libraries:" >&2; echo "${missing}" >&2; exit 1; fi
+# (libcuda.so.1 is the driver library: since ORT 1.31 the CUDA provider links it
+# directly, and the NVIDIA Container Toolkit injects it at run time.)
 
 # Let the NVIDIA Container Toolkit expose every GPU and inject the compute
 # (libcuda) and utility (nvidia-smi) driver components when run with --gpus.
