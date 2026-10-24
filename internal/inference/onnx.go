@@ -143,6 +143,7 @@ func NewONNXClassifier(modelPath string, opts ONNXClassifierOptions) (Classifier
 			logger.Int("cuda_nodes", info.CUDANodes),
 			logger.Int("total_nodes", info.TotalNodes),
 			logger.String("cpu_ops", strings.Join(info.CPUOps, ",")))
+		warnFP16OnPreVolta(modelPath, ep.DeviceID)
 	}
 	return c, nil
 }

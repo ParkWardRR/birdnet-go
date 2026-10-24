@@ -147,6 +147,8 @@ const (
 func cudaHint(msg string) string {
 	m := strings.ToLower(msg)
 	switch {
+	case isCUDAArchMismatch(m):
+		return cudaHintArch
 	case strings.Contains(m, "in this build"):
 		return cudaHintBuild
 	case strings.Contains(m, "libcudnn"),
