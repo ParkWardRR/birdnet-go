@@ -526,7 +526,7 @@ type PrivacyFilterSettings struct {
 // binary, so no download is needed; it requires an ONNX Runtime library and is
 // inactive without one.
 type VADSettings struct {
-	Enabled   bool    `yaml:"enabled" json:"enabled"`     // true to enable the VAD speech gate (opt-in, default false)
+	Enabled   bool    `yaml:"enabled" json:"enabled"`     // true to enable the VAD speech gate (opt-in, default false); runs on the GPU when birdnet.onnxprovider is cuda, falling back to the CPU
 	Threshold float64 `yaml:"threshold" json:"threshold"` // speech-probability gate in (0,1]; default 0.35
 	ModelPath string  `yaml:"modelpath" json:"modelPath"` // optional override for the embedded silero .onnx; must be a sequence-export model (inputs input/h/c), not the stock upstream frame model; empty uses the embedded model
 }

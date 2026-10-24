@@ -2692,7 +2692,7 @@
       "properties": {
         "enabled": {
           "type": "boolean",
-          "description": "true to enable the VAD speech gate (opt-in, default false)"
+          "description": "true to enable the VAD speech gate (opt-in, default false); runs on the GPU when birdnet.onnxprovider is cuda, falling back to the CPU"
         },
         "threshold": {
           "type": "number",

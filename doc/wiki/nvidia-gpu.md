@@ -56,7 +56,8 @@ Toolkit installation first; BirdNET-Go cannot reach the GPU without it.
 | BirdNET v3.0 (ONNX)                       |   Yes   |                                                                                                            |
 | Perch v2 (ONNX)                           |   Yes   | Operators the CUDA provider lacks stay on the CPU (reported, see [Verifying](#verifying-the-gpu-is-used)). |
 | BattyBirdNET                              | Partly  | The heavy embedding model runs on CUDA; the tiny classifier head stays on the CPU.                         |
-| Range filter, privacy/voice filter        |   No    | Small models that always run on the CPU.                                                                   |
+| Range filter                              |   No    | Small model that always runs on the CPU.                                                                   |
+| Privacy filter speech gate (Silero VAD)   |   Yes   | When `realtime.privacyfilter.vad.enabled` is on. Falls back to the CPU with a warning instead of failing.  |
 
 ONNX Runtime assigns each operator of a model to the CUDA provider when it has a
 CUDA kernel for it, and leaves the rest (typically shape bookkeeping) on the CPU.
@@ -347,7 +348,8 @@ birdnet-go > Package settings**.
 ### High CPU use even on CUDA
 
 Audio capture, resampling, the spectrogram and clip exports still run on the
-CPU, as do the range filter and any operators listed under `cpuOps`. Use
+CPU, as do the range filter, the label-based privacy filter and any operators
+listed under `cpuOps`. Use
 `cuda-benchmark` to compare the inference share before and after.
 
 ## Licenses
