@@ -69,7 +69,7 @@ COPY --from=cudnn /opt/cudnn/LICENSE /usr/share/doc/nvidia-cuda/cudnn-${CUDNN_VE
 RUN set -eu; \
     rm -rf /usr/local/cuda/lib64/stubs; \
     ldconfig; \
-    missing=$(ldd /usr/lib/libonnxruntime_providers_cuda.so | grep "not found" || true); \
+    missing=$(ldd /usr/lib/libonnxruntime_providers_cuda.so | grep "not found" | grep -v "libcuda\.so\.1 " || true); \
     if [ -n "${missing}" ]; then echo "Error: unresolved CUDA provider libraries:" >&2; echo "${missing}" >&2; exit 1; fi; \
     test -e "/usr/lib/libonnxruntime.so.${ONNXRUNTIME_VERSION}"; \
     test -e "/usr/local/cuda/lib64/libcudnn.so.${CUDNN_VERSION%.*}"
