@@ -129,10 +129,6 @@ func getConcurrencyLevel() int {
 
 // TestGetDetections tests the GetDetections endpoint with various query types
 func TestGetDetections(t *testing.T) {
-	// Setup
-	e, mockDS, controller := setupTestEnvironment(t)
-	controller.RegisterDetectionRoutes(controller.Group) // Ensure routes are registered on the test echo instance
-
 	// Create mock data
 	mockNotes := []datastore.Note{
 		{
@@ -542,8 +538,10 @@ func TestGetDetections(t *testing.T) {
 	for _, tc := range testCases {
 		localTC := tc // Capture range variable
 		t.Run(localTC.name, func(t *testing.T) {
-			// Setup mock expectations
-			mockDS.ExpectedCalls = nil
+			// Each subtest gets its own handler and cache, so a cached page from one
+			// case can never answer another.
+			e, mockDS, controller := setupTestEnvironment(t)
+			controller.RegisterDetectionRoutes(controller.Group) // Ensure routes are registered on the test echo instance
 			localTC.mockSetup(&mockDS.Mock)
 
 			// Create request with query parameters
@@ -995,6 +993,60 @@ func TestGetRecentDetections(t *testing.T) {
 			limit: "5",
 			mockSetup: func(m *mock.Mock) {
 				m.On("GetLastDetections", 5).Return(mockNotes, nil)
+			},
+			expectedStatus: http.StatusOK,
+			expectedCount:  2,
+		},
+		{
+			name:  "Huge limit is clamped",
+			limit: "999999999",
+			mockSetup: func(m *mock.Mock) {
+				m.On("GetLastDetections", maxNumResults).Return(mockNotes, nil)
+			},
+			expectedStatus: http.StatusOK,
+			expectedCount:  2,
+		},
+		{
+			name:  "Limit at the maximum",
+			limit: "1000",
+			mockSetup: func(m *mock.Mock) {
+				m.On("GetLastDetections", maxNumResults).Return(mockNotes, nil)
+			},
+			expectedStatus: http.StatusOK,
+			expectedCount:  2,
+		},
+		{
+			name:  "Limit above the maximum is clamped",
+			limit: "1001",
+			mockSetup: func(m *mock.Mock) {
+				m.On("GetLastDetections", maxNumResults).Return(mockNotes, nil)
+			},
+			expectedStatus: http.StatusOK,
+			expectedCount:  2,
+		},
+		{
+			name:  "Frontend maximum limit",
+			limit: "48",
+			mockSetup: func(m *mock.Mock) {
+				m.On("GetLastDetections", 48).Return(mockNotes, nil)
+			},
+			expectedStatus: http.StatusOK,
+			expectedCount:  2,
+		},
+		{
+			name:  "Negative limit uses default",
+			limit: "-5",
+			mockSetup: func(m *mock.Mock) {
+				m.On("GetLastDetections", 10).Return(mockNotes, nil)
+			},
+			expectedStatus: http.StatusOK,
+			expectedCount:  2,
+		},
+		{
+			name:  "Non-numeric limit uses default",
+			limit: "abc",
+			mockSetup: func(m *mock.Mock) {
+				m.On("GetLastDetections", 10).Return(mockNotes, nil)
 			},
 			expectedStatus: http.StatusOK,
 			expectedCount:  2,

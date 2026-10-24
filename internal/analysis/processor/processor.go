@@ -295,6 +295,9 @@ func suggestLevelForDisabledFilter(overlap float64) {
 
 // validateOverlapForLevel checks if the current overlap is sufficient for the
 // configured filter level and provides warnings/recommendations if not optimal.
+// minDetections is the count at the configured overlap; it is logged as
+// configured_min_detections because the analysis cadence cap can lower the
+// overlap in use, and with it the count the filter applies.
 func validateOverlapForLevel(level int, overlap, minOverlap float64, minDetections int) {
 	if overlap < minOverlap {
 		// Overlap is too low for this level
@@ -303,9 +306,8 @@ func validateOverlapForLevel(level int, overlap, minOverlap float64, minDetectio
 			logger.Int("level", level),
 			logger.String("level_name", getLevelName(level)),
 			logger.Float64("min_overlap", minOverlap),
-			logger.Float64("current_overlap", overlap),
-			logger.Int("min_detections", minDetections),
-			logger.String("hardware_req", getHardwareRequirementForLevel(level)),
+			logger.Float64("configured_overlap", overlap),
+			logger.Int("configured_min_detections", minDetections),
 			logger.Int("recommended_level_for_overlap", recommendedForCurrent),
 			logger.String("operation", "false_positive_filter_config"))
 
@@ -323,30 +325,8 @@ func validateOverlapForLevel(level int, overlap, minOverlap float64, minDetectio
 			logger.String("level_name", getLevelName(level)),
 			logger.Float64("overlap", overlap),
 			logger.Float64("min_overlap", minOverlap),
-			logger.Int("min_detections", minDetections),
-			logger.String("hardware_req", getHardwareRequirementForLevel(level)),
+			logger.Int("configured_min_detections", minDetections),
 			logger.String("operation", "false_positive_filter_config"))
-	}
-}
-
-// warnAboutHardwareRequirements checks if high filter levels (4-5) have
-// sufficient hardware performance based on overlap settings and inference time.
-func warnAboutHardwareRequirements(level int, overlap float64) {
-	if level >= 4 {
-		// Check if overlap is within valid range for calculation
-		if overlap >= 3.0 {
-			GetLogger().Warn("Overlap value too high for hardware calculation",
-				logger.Float64("overlap", overlap),
-				logger.Float64("max_valid", 2.9),
-				logger.String("operation", "false_positive_filter_config"))
-		} else {
-			stepSize := 3.0 - overlap
-			maxInferenceTime := stepSize * 1000 // Convert to ms
-			GetLogger().Warn("High filtering level requires fast hardware",
-				logger.Int("level", level),
-				logger.Float64("required_inference_ms", maxInferenceTime),
-				logger.String("operation", "false_positive_filter_config"))
-		}
 	}
 }
 
@@ -368,16 +348,18 @@ func validateAndLogFilterConfig(settings *conf.Settings) {
 	overlap := settings.BirdNET.Overlap
 	minOverlap := getMinimumOverlapForLevel(level)
 
-	// Calculate what minDetections will be with current settings
-	minDetections := calculateMinDetectionsFromSettings(settings)
+	// minDetections at the configured overlap. No cadence plan exists yet at
+	// startup; under the cap the filter applies the count at the effective overlap.
+	minDetections := calculateMinDetectionsFromSettings(settings, classifier.ConfiguredBaseOverlap(settings))
 
 	if level == 0 {
 		// Smart migration: suggest a level based on current overlap
 		suggestLevelForDisabledFilter(overlap)
 	} else {
-		// Filtering is enabled - validate overlap and warn about hardware if needed
+		// Filtering is enabled - validate the configured overlap against the level.
+		// Whether the hardware sustains that overlap is decided by the analysis
+		// cadence cap, which logs the cadence it plans.
 		validateOverlapForLevel(level, overlap, minOverlap, minDetections)
-		warnAboutHardwareRequirements(level, overlap)
 	}
 }
 
@@ -1572,7 +1554,7 @@ func (p *Processor) buildClipPath(settings *conf.Settings, scientificName string
 
 // shouldDiscardDetection checks if a detection should be discarded based on various criteria.
 // The caller provides a settings snapshot and the precomputed minDetections (from
-// calculateMinDetectionsForModel) to avoid redundant settings fetches and ensure
+// MinDetectionsForModel) to avoid redundant settings fetches and ensure
 // consistency within a single flush cycle.
 func (p *Processor) shouldDiscardDetection(item *PendingDetection, settings *conf.Settings, minDetections int) (shouldDiscard bool, reason string) {
 	// Check minimum detection count
@@ -1756,8 +1738,8 @@ func (p *Processor) processApprovedDetection(item *PendingDetection, speciesName
 //	Level 1: Lenient (20% threshold, ~2 detections)
 //	Level 2: Moderate (30% threshold, ~3 detections)
 //	Level 3: Balanced (50% threshold, ~5 detections - original pre-Sept 2025 behavior)
-//	Level 4: Strict (60% threshold, ~12 detections - requires RPi 4+)
-//	Level 5: Maximum (70% threshold, ~21 detections - requires RPi 4+)
+//	Level 4: Strict (60% threshold, ~12 detections)
+//	Level 5: Maximum (70% threshold, ~21 detections)
 //
 // Note: Audio clip length (captureLength/preCapture) does NOT affect this calculation.
 // Those settings control saved audio length, not detection sensitivity.
@@ -1770,15 +1752,20 @@ func (p *Processor) processApprovedDetection(item *PendingDetection, speciesName
 //
 // calculateMinDetectionsFromSettings computes minimum detections from settings alone.
 // This is a standalone function that doesn't require a Processor instance.
-func calculateMinDetectionsFromSettings(settings *conf.Settings) int {
+//
+// baseOverlap is the effective base overlap, which the cadence cap may hold below
+// settings.BirdNET.Overlap; the step is derived from it so the count matches the
+// buffer's real cadence.
+func calculateMinDetectionsFromSettings(settings *conf.Settings, baseOverlap time.Duration) int {
 	// BirdNET uses 3-second chunks for analysis. Since Option A (issue #4096) the
-	// realtime buffer honors birdnet.overlap, so the analysis step is
-	// chunkDurationSeconds - overlap, matching the buffer's BufferInterval.
-	const chunkDurationSeconds = 3.0
+	// realtime buffer follows the effective base overlap (baseOverlap), so the
+	// analysis step is chunkDurationSeconds - overlap, matching the buffer's
+	// BufferInterval.
+	chunkDurationSeconds := classifier.AnalysisBaseClipLength.Seconds()
 
 	// Get filtering level from settings
 	level := settings.Realtime.FalsePositiveFilter.Level
-	overlap := settings.BirdNET.Overlap
+	overlap := baseOverlap.Seconds()
 
 	// Level 0: no filtering
 	if level == 0 {
@@ -1794,18 +1781,6 @@ func calculateMinDetectionsFromSettings(settings *conf.Settings) int {
 		// Continue with safe fallback (segment length is floored in the helper)
 	}
 
-	// Validate overlap meets minimum for level (warning only, don't block)
-	minOverlap := getMinimumOverlapForLevel(level)
-	if overlap < minOverlap {
-		GetLogger().Warn("Overlap too low for filtering level",
-			logger.Int("level", level),
-			logger.String("level_name", getLevelName(level)),
-			logger.Float64("min_overlap", minOverlap),
-			logger.Float64("current_overlap", overlap),
-			logger.String("operation", "calculate_min_detections"))
-		// Continue with calculation - system will work but may not achieve target filtering
-	}
-
 	// The analysis step (how often a new window is produced) is chunk - overlap.
 	return minDetectionsForSegment(chunkDurationSeconds-overlap, level)
 }
@@ -1813,7 +1788,18 @@ func calculateMinDetectionsFromSettings(settings *conf.Settings) int {
 // calculateMinDetections is a convenience method that calls calculateMinDetectionsFromSettings
 // with the processor's settings.
 func (p *Processor) calculateMinDetections() int {
-	return calculateMinDetectionsFromSettings(p.currentSettings())
+	settings := p.currentSettings()
+	return calculateMinDetectionsFromSettings(settings, p.effectiveBaseOverlap(settings))
+}
+
+// effectiveBaseOverlap returns the base overlap the analysis buffers actually
+// use: the published cadence plan's effective overlap when a backend is attached,
+// else the configured birdnet.overlap.
+func (p *Processor) effectiveBaseOverlap(settings *conf.Settings) time.Duration {
+	if p.Bn != nil {
+		return p.Bn.EffectiveBaseOverlap()
+	}
+	return classifier.ConfiguredBaseOverlap(settings)
 }
 
 // flushPendingDetections processes one flush cycle, flushing eligible detections.
@@ -1823,7 +1809,8 @@ func (p *Processor) calculateMinDetections() int {
 func (p *Processor) flushPendingDetections() (pendingCount, flushedCount int) {
 	now := time.Now()
 	settings := p.currentSettings()
-	visThresholds := precomputeVisibilityThresholds(settings)
+	baseOverlap := p.effectiveBaseOverlap(settings)
+	visThresholds := precomputeVisibilityThresholds(settings, baseOverlap)
 
 	var terminalNotifs []SSEPendingDetection
 	var broadcastSnapshot []SSEPendingDetection
@@ -1839,7 +1826,7 @@ func (p *Processor) flushPendingDetections() (pendingCount, flushedCount int) {
 		}
 
 		speciesName := strings.ToLower(item.Detection.Result.Species.CommonName)
-		itemMinDetections := calculateMinDetectionsForModel(settings, item.BestModelID)
+		itemMinDetections := MinDetectionsForModel(settings, item.BestModelID, baseOverlap)
 
 		if shouldDiscard, reason := p.shouldDiscardDetection(&item, settings, itemMinDetections); shouldDiscard {
 			// Aggregate daylight-filter discards into the periodic pipeline-stats
@@ -1914,8 +1901,8 @@ func (p *Processor) flushPendingDetections() (pendingCount, flushedCount int) {
 // logMinDetectionsChanges logs when bird or bat minDetections values change
 // due to a config hot-reload, helping operators verify that FP filter
 // adjustments took effect.
-func logMinDetectionsChanges(settings *conf.Settings, lastBird, lastBat *int) {
-	bird := calculateMinDetectionsFromSettings(settings)
+func logMinDetectionsChanges(settings *conf.Settings, baseOverlap time.Duration, lastBird, lastBat *int) {
+	bird := calculateMinDetectionsFromSettings(settings, baseOverlap)
 	bat := calculateBatMinDetections(settings)
 	if *lastBird != -1 && bird != *lastBird {
 		GetLogger().Info("bird minDetections updated due to config change",
@@ -1949,7 +1936,8 @@ func (p *Processor) pendingDetectionsFlusher() {
 		for {
 			select {
 			case <-ticker.C:
-				logMinDetectionsChanges(p.currentSettings(), &lastBirdMinDet, &lastBatMinDet)
+				settings := p.currentSettings()
+				logMinDetectionsChanges(settings, p.effectiveBaseOverlap(settings), &lastBirdMinDet, &lastBatMinDet)
 				pendingCount, flushedCount := p.flushPendingDetections()
 
 				if pendingCount > 0 || flushedCount > 0 {
@@ -2372,6 +2360,7 @@ func (p *Processor) buildSaveAudioAction(det *Detections, detectionCtx *Detectio
 			modelName:        det.Result.Model.Name,
 			modelVersion:     det.Result.Model.Version,
 			species:          strings.ToLower(det.Result.Species.CommonName),
+			clipTags:         newClipTagMeta(&det.Result),
 			NoteID:           det.Result.ID, // May be 0 here; updated after DB save via DetectionCtx
 			PreRenderer:      p.preRenderer,
 			DetectionCtx:     detectionCtx,
