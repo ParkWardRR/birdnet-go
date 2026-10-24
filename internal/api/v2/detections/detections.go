@@ -157,16 +157,20 @@ type DetectionResponse struct {
 	Confidence     float64     `json:"confidence"`
 	ClipName       string      `json:"clipName,omitempty"` // Audio clip filename (basename only, no path); empty when no clip exists
 	// SpectrogramOnly is true when the audio clip was removed by retention but a spectrogram image was kept; the frontend shows the image without playback
-	SpectrogramOnly    bool              `json:"spectrogramOnly,omitempty"`
-	ModelType          string            `json:"modelType,omitempty"` // AI model type (e.g. "bird", "bat"); drives the spectrogram frequency range
-	Verified           string            `json:"verified"`
-	Locked             bool              `json:"locked"`
-	Unlikely           bool              `json:"unlikely,omitempty"`
-	Comments           []CommentResponse `json:"comments,omitempty"`
-	Weather            *WeatherInfo      `json:"weather,omitempty"`
-	TimeOfDay          string            `json:"timeOfDay,omitempty"`
-	IsNewSpecies       bool              `json:"isNewSpecies,omitempty"`       // First seen within tracking window
-	DaysSinceFirstSeen int               `json:"daysSinceFirstSeen,omitempty"` // Days since species was first detected
+	SpectrogramOnly bool   `json:"spectrogramOnly,omitempty"`
+	ModelType       string `json:"modelType,omitempty"` // AI model type (e.g. "bird", "bat"); drives the spectrogram frequency range
+	// ClipSampleRate is the sample rate in Hz of the detection's original audio clip, omitted when unknown. Bat spectrograms span 0 to half of it. A spectrogram-only detection reports the original clip's rate.
+	ClipSampleRate int `json:"clipSampleRate,omitempty"`
+	// ModelContributions is the per-model breakdown from the enhanced database, read only. It is omitted on the legacy database, during migration, and when nothing was recorded.
+	ModelContributions []ModelContributionResponse `json:"modelContributions,omitempty"`
+	Verified           string                      `json:"verified"`
+	Locked             bool                        `json:"locked"`
+	Unlikely           bool                        `json:"unlikely,omitempty"`
+	Comments           []CommentResponse           `json:"comments,omitempty"`
+	Weather            *WeatherInfo                `json:"weather,omitempty"`
+	TimeOfDay          string                      `json:"timeOfDay,omitempty"`
+	IsNewSpecies       bool                        `json:"isNewSpecies,omitempty"`       // First seen within tracking window
+	DaysSinceFirstSeen int                         `json:"daysSinceFirstSeen,omitempty"` // Days since species was first detected
 
 	// Multi-period tracking metadata
 	IsNewThisYear   bool   `json:"isNewThisYear,omitempty"`   // First time this year
@@ -616,7 +620,7 @@ func (c *Handler) GetDetections(ctx echo.Context) error {
 	}
 
 	// Convert notes to response format
-	detections := c.convertNotesToDetectionResponses(notes, params.IncludeWeather)
+	detections := c.convertNotesToDetectionResponses(reqCtx, notes, params.IncludeWeather)
 	c.stripSourceForUnauthenticated(ctx, detections)
 
 	// Create paginated response
@@ -758,7 +762,7 @@ func (c *Handler) stripSourceForUnauthenticated(ctx echo.Context, detections []D
 }
 
 // convertNotesToDetectionResponses converts datastore notes to API detection responses
-func (c *Handler) convertNotesToDetectionResponses(notes []datastore.Note, includeWeather bool) []DetectionResponse {
+func (c *Handler) convertNotesToDetectionResponses(ctx context.Context, notes []datastore.Note, includeWeather bool) []DetectionResponse {
 	detections := make([]DetectionResponse, 0, len(notes))
 
 	// Create a map to cache weather data if needed
@@ -769,6 +773,7 @@ func (c *Handler) convertNotesToDetectionResponses(notes []datastore.Note, inclu
 		detection := c.noteToDetectionResponse(note, includeWeather, weatherCache)
 		detections = append(detections, detection)
 	}
+	c.attachModelContributions(ctx, detections)
 	return detections
 }
 
@@ -791,6 +796,7 @@ func (c *Handler) noteToDetectionResponse(note *datastore.Note, includeWeather b
 		ClipName: apicore.SafeBaseName(note.ClipName),
 		// SpectrogramOnly never exposes the kept clip name, only that an image exists.
 		SpectrogramOnly: note.IsSpectrogramOnly(),
+		ClipSampleRate:  note.ClipSampleRate,
 		Locked:          note.Locked,
 		Unlikely:        note.Unlikely,
 	}
@@ -1244,7 +1250,10 @@ func (c *Handler) getSearchDetections(ctx context.Context, search string, scient
 	})
 }
 
-// GetDetection returns a single detection by ID
+// GetDetection returns a single detection by ID. For a bat detection with a clip
+// but no stored clip sample rate it reads that clip's header once, waiting at most
+// clipRateResponseBudget, stores the rate, and returns it as clipSampleRate; when
+// the wait is exceeded or the clip cannot be read the field is omitted.
 func (c *Handler) GetDetection(ctx echo.Context) error {
 	id := ctx.Param("id")
 	note, err := c.DS.Get(id)
@@ -1252,13 +1261,18 @@ func (c *Handler) GetDetection(ctx echo.Context) error {
 		return c.HandleError(ctx, err, "Detection not found", http.StatusNotFound)
 	}
 
+	// An old bat row may have no clip sample rate yet; learn it from the clip
+	// header (bounded wait). No list or search path does this.
+	c.fillClipSampleRate(&note)
+
 	// For single detection, include weather data by default
 	weatherCache := make(map[string][]datastore.HourlyWeather)
-	detection := c.noteToDetectionResponse(&note, true, weatherCache)
+	resp := []DetectionResponse{c.noteToDetectionResponse(&note, true, weatherCache)}
+	c.attachModelContributions(ctx.Request().Context(), resp)
 	if !c.isClientAuthenticated(ctx) {
-		detection.Source = nil
+		resp[0].Source = nil
 	}
-	return ctx.JSON(http.StatusOK, detection)
+	return ctx.JSON(http.StatusOK, resp[0])
 }
 
 // GetRecentDetections returns the most recent detections
@@ -1282,7 +1296,7 @@ func (c *Handler) GetRecentDetections(ctx echo.Context) error {
 		return c.HandleError(ctx, err, "Failed to get recent detections", http.StatusInternalServerError)
 	}
 
-	detections := c.convertNotesToDetectionResponses(notes, includeWeather)
+	detections := c.convertNotesToDetectionResponses(ctx.Request().Context(), notes, includeWeather)
 	c.stripSourceForUnauthenticated(ctx, detections)
 	return ctx.JSON(http.StatusOK, detections)
 }
@@ -1365,7 +1379,7 @@ func (c *Handler) removeDetectionFiles(clipName string) {
 
 	// Remove all associated spectrogram files. buildSpectrogramPaths names them
 	// <basename>_<width>px<suffix>.png, where <suffix> encodes the visual style,
-	// dynamic range, frequency profile (e.g. "-bat-v2") and legend/raw variant - and a
+	// dynamic range, frequency profile (e.g. "-bat-v3") and legend/raw variant - and a
 	// single clip can accumulate several of these as those settings change over time;
 	// the prerenderer writes <basename>.png. Rather than enumerate every combination
 	// (and miss renders from styles no longer configured), scan the directory and
@@ -1673,35 +1687,35 @@ func (c *Handler) toggleSpeciesInIgnoredList(species string) (action string, isE
 		return "", false, nil
 	}
 
-	// Serialise this read-modify-write against concurrent settings saves so an
-	// out-of-band StoreSettings (range filter rebuild, etc.) cannot interleave
-	// between reading current and publishing the update.
+	// Serialise against concurrent settings handlers on this controller. The
+	// read-modify-write itself runs inside updateAndSaveSettings, which reads the
+	// baseline under the process-wide settings writer lock, so an out-of-band
+	// writer (range filter rebuild, model install) cannot publish between reading
+	// the exclude list and publishing the update.
 	c.settingsMutex.Lock()
 	defer c.settingsMutex.Unlock()
 
-	// Read the latest snapshot; getSettingsOrFallback prefers the global when
-	// this controller owns it, so out-of-band StoreSettings calls are seen.
-	current := c.getSettingsOrFallback()
-
-	wasExcluded := slices.ContainsFunc(current.Realtime.Species.Exclude, func(s string) bool {
-		return c.excludeEntryMatches(s, species)
-	})
-
-	updated := conf.CloneSettings(current)
-	if wasExcluded {
-		updated.Realtime.Species.Exclude = slices.DeleteFunc(updated.Realtime.Species.Exclude, func(s string) bool {
+	var wasExcluded bool
+	current, updated, err := c.updateAndSaveSettings(func(current, updated *conf.Settings) error {
+		wasExcluded = slices.ContainsFunc(current.Realtime.Species.Exclude, func(s string) bool {
 			return c.excludeEntryMatches(s, species)
 		})
-		action = "removed"
-		isExcluded = false
-	} else {
-		updated.Realtime.Species.Exclude = append(updated.Realtime.Species.Exclude, species)
-		action = "added"
-		isExcluded = true
-	}
 
-	if err := c.publishAndSaveSettings(current, updated); err != nil {
+		if wasExcluded {
+			updated.Realtime.Species.Exclude = slices.DeleteFunc(updated.Realtime.Species.Exclude, func(s string) bool {
+				return c.excludeEntryMatches(s, species)
+			})
+		} else {
+			updated.Realtime.Species.Exclude = append(updated.Realtime.Species.Exclude, species)
+		}
+		return nil
+	})
+	if err != nil {
 		return "", wasExcluded, err
+	}
+	action, isExcluded = "removed", false
+	if !wasExcluded {
+		action, isExcluded = "added", true
 	}
 
 	// Trigger side-effects (range filter rebuild, etc.) so the include list
@@ -1726,17 +1740,19 @@ func (c *Handler) addSpeciesToIgnoredList(species string) error {
 	c.settingsMutex.Lock()
 	defer c.settingsMutex.Unlock()
 
-	current := c.getSettingsOrFallback()
-	if slices.ContainsFunc(current.Realtime.Species.Exclude, func(s string) bool {
-		return c.excludeEntryMatches(s, species)
-	}) {
+	current, updated, err := c.updateAndSaveSettings(func(current, updated *conf.Settings) error {
+		if slices.ContainsFunc(current.Realtime.Species.Exclude, func(s string) bool {
+			return c.excludeEntryMatches(s, species)
+		}) {
+			return conf.ErrSettingsUnchanged
+		}
+		updated.Realtime.Species.Exclude = append(updated.Realtime.Species.Exclude, species)
+		return nil
+	})
+	if errors.Is(err, conf.ErrSettingsUnchanged) {
 		return nil
 	}
-
-	updated := conf.CloneSettings(current)
-	updated.Realtime.Species.Exclude = append(updated.Realtime.Species.Exclude, species)
-
-	if err := c.publishAndSaveSettings(current, updated); err != nil {
+	if err != nil {
 		return err
 	}
 

@@ -387,6 +387,7 @@ func InitONNXRuntime(libraryPath string) (err error) {
 		return nil
 	}
 
+	configured := libraryPath != ""
 	if libraryPath == "" {
 		libraryPath = findONNXRuntimeLibrary()
 	}
@@ -399,7 +400,29 @@ func InitONNXRuntime(libraryPath string) (err error) {
 
 	ort.MustInitORT(libraryPath)
 	ortInitialized = true
+	publishORTRuntime(libraryPath, configured)
+	logKleidiAIWorkaround(ortlib.GetVersion(), runtime.GOARCH)
 	return nil
+}
+
+// archARM64 is the runtime.GOARCH value of 64-bit Arm. Of the targets
+// BirdNET-Go builds for, it is the only one where ONNX Runtime uses KleidiAI
+// kernels.
+const archARM64 = "arm64"
+
+// logKleidiAIWorkaround logs at Info that sessions disable the KleidiAI
+// kernels for ortVersion, so support can confirm the workaround is active on
+// an arm64 host. It stays silent off arm64, where the
+// session option changes nothing. InitONNXRuntime calls it after a successful
+// init.
+func logKleidiAIWorkaround(ortVersion, goarch string) {
+	if goarch != archARM64 || !ort.KleidiAIWorkaroundNeeded(ortVersion) {
+		return
+	}
+	logger.Global().Module("inference").Info(
+		"ONNX Runtime KleidiAI kernels are disabled to avoid a known memory growth in older ONNX Runtime releases on Arm CPUs with SME",
+		logger.String("ort_version", ortVersion),
+		logger.String("fixed_in", ort.KleidiAIFixedVersion))
 }
 
 // findONNXRuntimeLibrary searches standard system paths for the ONNX Runtime
@@ -459,5 +482,6 @@ func DestroyONNXRuntime() error {
 		return err
 	}
 	ortInitialized = false
+	clearORTRuntime()
 	return nil
 }

@@ -294,6 +294,52 @@ func (r *detectionRepository) Update(ctx context.Context, id uint, updates map[s
 	return nil
 }
 
+// columnClipSampleRate is the detections column holding the clip's sample rate (Hz).
+const columnClipSampleRate = "clip_sample_rate"
+
+// RecordClipSampleRate sets the clip sample rate of a detection whose clip_name
+// still equals clipName, overwriting any stored value. A single-row UPDATE with a
+// WHERE guard is atomic on SQLite and MySQL, so it needs no transaction or lock.
+// Unlike Update it does not check detection locks: the rate is clip metadata.
+func (r *detectionRepository) RecordClipSampleRate(ctx context.Context, id uint, clipName string, rate int) error {
+	if clipName == "" || rate <= 0 {
+		return nil
+	}
+	return datastore.RetryOnLock(ctx, "v2_record_clip_sample_rate", func() error {
+		return r.clipRows(ctx, id, clipName).Update(columnClipSampleRate, rate).Error
+	}, r.metrics)
+}
+
+// FillClipSampleRate sets the clip sample rate only while it is NULL and clip_name
+// still equals clipName. It reports whether a row changed.
+func (r *detectionRepository) FillClipSampleRate(ctx context.Context, id uint, clipName string, rate int) (bool, error) {
+	if clipName == "" || rate <= 0 {
+		return false, nil
+	}
+	var rowsAffected int64
+	err := datastore.RetryOnLock(ctx, "v2_fill_clip_sample_rate", func() error {
+		res := r.clipRows(ctx, id, clipName).
+			Where(columnClipSampleRate+" IS NULL").
+			Update(columnClipSampleRate, rate)
+		if res.Error != nil {
+			return res.Error
+		}
+		rowsAffected = res.RowsAffected
+		return nil
+	}, r.metrics)
+	if err != nil {
+		return false, err
+	}
+	return rowsAffected > 0, nil
+}
+
+// clipRows selects the detection row with the given ID whose clip_name still
+// equals clipName, for the guarded clip sample rate updates.
+func (r *detectionRepository) clipRows(ctx context.Context, id uint, clipName string) *gorm.DB {
+	return r.db.WithContext(ctx).Table(r.tableName()).
+		Where("id = ? AND clip_name = ?", id, clipName)
+}
+
 // Delete removes a detection by ID.
 // Uses atomic operation to prevent TOCTOU race with lock checks.
 func (r *detectionRepository) Delete(ctx context.Context, id uint) error {
@@ -763,16 +809,21 @@ func (r *detectionRepository) applySearchOrdering(query *gorm.DB, filters *Searc
 	return query
 }
 
+// searchQuery builds the filtered (but unordered and unpaginated) detections query
+// shared by Search and CountSearch, so both always agree on which rows match.
+func (r *detectionRepository) searchQuery(ctx context.Context, filters *SearchFilters) *gorm.DB {
+	query := r.db.WithContext(ctx).Table(r.tableName())
+	query = r.buildSearchFilters(query, filters)
+	return r.buildSearchJoins(query, filters)
+}
+
 // Search finds detections matching the given filters.
 func (r *detectionRepository) Search(ctx context.Context, filters *SearchFilters) ([]*entities.Detection, int64, error) {
 	if filters == nil {
 		filters = &SearchFilters{}
 	}
 
-	// Build query with filters
-	query := r.db.WithContext(ctx).Table(r.tableName())
-	query = r.buildSearchFilters(query, filters)
-	query = r.buildSearchJoins(query, filters)
+	query := r.searchQuery(ctx, filters)
 
 	// Count total before pagination
 	var total int64
@@ -791,6 +842,21 @@ func (r *detectionRepository) Search(ctx context.Context, filters *SearchFilters
 	}
 
 	return dets, total, nil
+}
+
+// CountSearch counts detections matching the given filters without loading them.
+// It runs only the COUNT that Search runs for its total, so callers that need just
+// the total avoid Search's unbounded row fetch when no Limit is set.
+func (r *detectionRepository) CountSearch(ctx context.Context, filters *SearchFilters) (int64, error) {
+	if filters == nil {
+		filters = &SearchFilters{}
+	}
+
+	var total int64
+	if err := r.searchQuery(ctx, filters).Count(&total).Error; err != nil {
+		return 0, err
+	}
+	return total, nil
 }
 
 // ============================================================================
@@ -1222,6 +1288,88 @@ func (r *detectionRepository) SaveModelContributions(ctx context.Context, detect
 	}, r.metrics)
 }
 
+// contributionWithModelRow is the scan target of the contribution and model join.
+type contributionWithModelRow struct {
+	ID            uint
+	DetectionID   uint
+	ModelID       uint
+	HitCount      int
+	MaxConfidence float64
+	FirstHitAt    *int64
+	LastHitAt     *int64
+	MinConfidence *float64
+	ConfidenceSum *float64
+	ModelName     string
+	ModelVersion  string
+	ModelVariant  string
+	ModelType     string
+}
+
+// contributionWithModelColumns lists the selected columns explicitly so that
+// classifier_path is never read.
+const contributionWithModelColumns = "c.id, c.detection_id, c.model_id, c.hit_count, c.max_confidence, " +
+	"c.first_hit_at, c.last_hit_at, c.min_confidence, c.confidence_sum, " +
+	"m.name AS model_name, m.version AS model_version, m.variant AS model_variant, m.model_type AS model_type"
+
+// contributionOrder gives each detection's contributions a total, stable order.
+const contributionOrder = "c.detection_id ASC, c.hit_count DESC, c.max_confidence DESC, c.model_id ASC"
+
+// GetModelContributionsByDetectionIDs returns the stored model contributions of
+// the given detections, keyed by detection ID. See the interface for ordering.
+func (r *detectionRepository) GetModelContributionsByDetectionIDs(ctx context.Context, detectionIDs []uint) (map[uint][]*entities.DetectionModelContribution, error) {
+	result := make(map[uint][]*entities.DetectionModelContribution)
+	if len(detectionIDs) == 0 {
+		return result, nil
+	}
+
+	// De-duplicate so one detection's rows are fetched by exactly one chunk.
+	ids := slices.Clone(detectionIDs)
+	slices.Sort(ids)
+	ids = slices.Compact(ids)
+
+	for i := 0; i < len(ids); i += batchQuerySize {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		chunk := ids[i:min(i+batchQuerySize, len(ids))]
+
+		var rows []contributionWithModelRow
+		err := r.db.WithContext(ctx).
+			Table(r.modelContributionsTable()+" c").
+			Select(contributionWithModelColumns).
+			Joins(fmt.Sprintf("JOIN %s m ON m.id = c.model_id", r.modelsTable())).
+			Where("c.detection_id IN ?", chunk).
+			Order(contributionOrder).
+			Scan(&rows).Error
+		if err != nil {
+			return nil, fmt.Errorf("batch load model contributions: %w", err)
+		}
+
+		for j := range rows {
+			row := &rows[j]
+			result[row.DetectionID] = append(result[row.DetectionID], &entities.DetectionModelContribution{
+				ID:            row.ID,
+				DetectionID:   row.DetectionID,
+				ModelID:       row.ModelID,
+				HitCount:      row.HitCount,
+				MaxConfidence: row.MaxConfidence,
+				FirstHitAt:    row.FirstHitAt,
+				LastHitAt:     row.LastHitAt,
+				MinConfidence: row.MinConfidence,
+				ConfidenceSum: row.ConfidenceSum,
+				Model: &entities.AIModel{
+					ID:        row.ModelID,
+					Name:      row.ModelName,
+					Version:   row.ModelVersion,
+					Variant:   row.ModelVariant,
+					ModelType: entities.ModelType(row.ModelType),
+				},
+			})
+		}
+	}
+	return result, nil
+}
+
 // SavePredictionsBatch stores predictions for multiple detections efficiently.
 // Uses ON CONFLICT DO NOTHING for idempotent migration support.
 func (r *detectionRepository) SavePredictionsBatch(ctx context.Context, preds []*entities.DetectionPrediction) error {
@@ -1512,7 +1660,7 @@ func (r *detectionRepository) Lock(ctx context.Context, detectionID uint) error 
 }
 
 // Unlock removes the lock from a detection.
-// This operation is idempotent — unlocking an already-unlocked detection succeeds silently.
+// This operation is idempotent: unlocking an already-unlocked detection succeeds silently.
 // Uses RetryOnLock for transient SQLite lock contention.
 func (r *detectionRepository) Unlock(ctx context.Context, detectionID uint) error {
 	return datastore.RetryOnLock(ctx, "v2_unlock_detection", func() error {

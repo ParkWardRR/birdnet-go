@@ -449,7 +449,15 @@
         "completedTitle": "Databasemigratie voltooid",
         "completedMessage": "Migratie voltooid. Herstart BirdNET-Go om over te schakelen naar de nieuwe database.",
         "errorTitle": "Databasemigratiefout",
-        "errorMessage": "Migratie gepauzeerd vanwege fouten. Controleer de logs en probeer te hervatten."
+        "errorMessage": "Migratie gepauzeerd vanwege fouten. Controleer de logs en probeer te hervatten.",
+        "legacyNotStartedTitle": "Database-upgrade vereist",
+        "legacyNotStartedMessage": "Deze installatie gebruikt nog het oude databaseformaat, dat in een toekomstige versie niet meer zal werken. Open Systeem > Database om de migratie uit te voeren.",
+        "legacyInProgressTitle": "Databasemigratie bezig",
+        "legacyInProgressMessage": "De migratie naar het nieuwe databaseformaat wordt uitgevoerd. Laat BirdNET-Go draaien tot deze klaar is; het oude formaat zal in een toekomstige versie niet meer werken.",
+        "legacyNeedsAttentionTitle": "Databasemigratie heeft aandacht nodig",
+        "legacyNeedsAttentionMessage": "De migratie naar het nieuwe databaseformaat is gepauzeerd of mislukt. Open Systeem > Database om te hervatten of opnieuw te proberen; het oude formaat zal in een toekomstige versie niet meer werken.",
+        "legacyRestartRequiredTitle": "Herstart om de databasemigratie af te ronden",
+        "legacyRestartRequiredMessage": "De migratie is voltooid. Herstart BirdNET-Go om over te schakelen naar de nieuwe database. Als dit bericht na een herstart blijft staan, controleer dan het logboek op databasefouten."
       },
       "cleanup": {
         "completeTitle": "Opruiming oude database voltooid",
@@ -521,6 +529,12 @@
         "cadenceCappedMessage": "Het uitvoeren van {models, plural, one {# model} other {# modellen}} op {sources, plural, one {# audiobron} other {# audiobronnen}} met de ingestelde overlap van {configured} s overschrijdt de gemeten capaciteit van dit apparaat, dus audio wordt geanalyseerd met {effective} s overlap. Het Vals Positief Filter kan daardoor minder bevestigingen vereisen. Uw opgeslagen instellingen blijven ongewijzigd; zie Instellingen > Analyse.",
         "cadenceOverloadedTitle": "Dit apparaat kan de audioanalyse niet bijhouden",
         "cadenceOverloadedMessage": "Het uitvoeren van {models, plural, one {# model} other {# modellen}} op {sources, plural, one {# audiobron} other {# audiobronnen}} overschrijdt de gemeten capaciteit van dit apparaat, zelfs zonder overlap, dus de analyse kan achterlopen en detecties kunnen worden gemist. Schakel minder modellen of audiobronnen in, of kies een snellere modelvariant."
+      },
+      "storage": {
+        "notPersistentTitle": "Gegevens gaan verloren wanneer de container opnieuw wordt aangemaakt",
+        "notPersistentMessage": "Deze paden staan op opslag die wordt verwijderd wanneer de container opnieuw wordt aangemaakt, bijvoorbeeld bij een image-update: {paths}. Koppel er een volume of een hostmap aan in je containerconfiguratie.",
+        "anonymousVolumeTitle": "Gegevens staan in een anoniem containervolume",
+        "anonymousVolumeMessage": "Deze paden staan in anonieme volumes die de containerruntime heeft aangemaakt omdat er geen volume was gekoppeld: {paths}. Een opnieuw gestarte container, bijvoorbeeld met docker run na een image-update, krijgt nieuwe lege volumes, waardoor de gegevens verloren lijken. Koppel er een benoemd volume of een hostmap aan."
       }
     },
     "loading": "Meldingen laden..."
@@ -787,6 +801,9 @@
       "loadFailedAction": "Bekijk de status van AI-modellen",
       "failingTitle": "{count, plural, one {Een model faalt bij elke analyse} other {# modellen falen bij elke analyse}}",
       "failingMessage": "{count, plural, one {{models} is geladen, maar elke analyse mislukt, dus het detecteert niets.} other {{models} zijn geladen, maar elke analyse mislukt, dus ze detecteren niets.}} De pagina AI-modellen toont de backend en de fout."
+    },
+    "legacyDatabase": {
+      "action": "Database-instellingen openen"
     },
     "banner": {
       "title": "Titel",
@@ -1575,7 +1592,7 @@
           "restartTitle": "Herstart vereist",
           "restartBody": "Herstart de applicatie om naar de V2-database te schakelen. Opruiming van de oude database is beschikbaar na herstart.",
           "fallbackError": "Verschil in recordaantal tussen legacy- en V2-database. Sommige records zijn mogelijk niet correct gemigreerd.",
-          "migrateInfo": "De migratie zal {count} records overzetten van de legacy-database naar het nieuwe V2-schema. De dual-write-modus garandeert nul dataverlies tijdens de migratie.",
+          "migrateInfo": "De migratie zal {count} records overzetten van de legacy-database naar het nieuwe V2-schema. Nieuwe detecties die tijdens de migratie worden opgeslagen, worden ook naar de nieuwe database gekopieerd.",
           "sourceLegacy": "Bron (legacy)",
           "targetV2": "Doel (V2)",
           "recordsLabel": "Records",
@@ -1627,7 +1644,7 @@
         },
         "notes": {
           "in_progress": "U kunt het systeem normaal blijven gebruiken terwijl de migratie op de achtergrond draait.",
-          "dual_write": "Migratie is bezig. Uw gegevens zijn veilig - alle nieuwe detecties worden opgeslagen in beide databases. U kunt BirdNET-Go gewoon blijven gebruiken.",
+          "dual_write": "Migratie is bezig. Uw gegevens zijn veilig - nieuwe detecties worden opgeslagen in de huidige database en tijdens de migratie naar de nieuwe database gekopieerd. U kunt BirdNET-Go gewoon blijven gebruiken.",
           "migrating": "Bestaande detecties worden gekopieerd naar de nieuwe database. Dit kan even duren afhankelijk van hoeveel detecties u heeft. U kunt op elk moment pauzeren en hervatten.",
           "validating": "Controleren of alle records correct zijn gekopieerd. Bijna klaar!",
           "cutover": "Overschakelen naar de nieuwe database. Dit duurt slechts een moment.",
@@ -2315,11 +2332,14 @@
       "saveAriaLabel": "Wijzigingen bewaren",
       "savingAriaLabel": "Bewaren ...",
       "unsavedChanges": "Niet opgeslagen wijzigingen",
-      "toolbar": "Instellingenacties"
+      "toolbar": "Instellingenacties",
+      "validationBlocked": "Sommige velden vragen aandacht voordat u kunt opslaan.",
+      "noChangesToSave": "Geen wijzigingen om op te slaan."
     },
     "errors": {
       "loadFailed": "Instellingen konden niet worden geladen",
       "saveFailed": "Instellingen konden niet worden opgeslagen",
+      "changedElsewhere": "De instellingen zijn elders gewijzigd. Controleer ze en sla opnieuw op.",
       "databaseStatsFailed": "Databasestatistieken konden niet worden geladen",
       "csvDownloadFailed": "CSV-download mislukt"
     },
@@ -2667,7 +2687,7 @@
                 "descriptions": {
                   "highContrast": "Ideaal voor zwakke signalen. Vogelgeluiden komen duidelijk uit boven de achtergrondruis. Aanbevolen voor wetenschappelijke/grijstinten stijlen.",
                   "standard": "Standaard gebalanceerde instelling. Goed voor de meeste toepassingen.",
-                  "extended": "Meer detail zichtbaar maar lager contrast. SoX standaardwaarde."
+                  "extended": "Meer detail zichtbaar maar lager contrast."
                 }
               },
               "enabled": {
@@ -2769,7 +2789,7 @@
           "title": "Wat is opgenomen in het rapport:",
           "applicationLogs": "**Applicatie logs** - Recente fouten en debug informatie",
           "configuration": "**Configuratie** - Jouw instellingen met gevoelige gegevens verwijderd",
-          "systemInfo": "**Systeem informatie** - OS versie, geheugen, en runtime details",
+          "systemInfo": "**Systeem informatie** - OS versie, geheugen, hardware, aangesloten USB-apparaten en geluidskaarten, en runtime details",
           "notIncluded": "**NIET opgenomen** - Audio bestanden, vogel herkenningen, of persoonlijke gegevens"
         },
         "userMessage": {
@@ -2922,6 +2942,11 @@
             "unit": "min",
             "helpText": "Voorkom herhaalde notificaties voor dezelfde soort binnen dit tijdvenster. Stel in op 0 om uit te schakelen."
           }
+        },
+        "rulesNotice": {
+          "message": "Pushmeldingen voor detecties komen van de waarschuwingsregels op het tabblad Regels. De ingebouwde detectieregels melden alleen in de app. Voeg voor pushmeldingen de actie {pushAction} toe aan de regel {ruleName}, of maak een regel voor de gebeurtenis {eventName} met een betrouwbaarheidsvoorwaarde en een wachttijd.",
+          "previousFilters": "Uw instellingen Minimale betrouwbaarheid ({confidence} %) en Soort-afkoeltijd ({minutes} min) hier worden niet gebruikt door waarschuwingsregels.",
+          "openRules": "Regels openen"
         },
         "noProviders": "Geen providers geconfigureerd",
         "noProvidersDescription": "Voeg een provider toe om pushmeldingen te ontvangen",
@@ -3189,7 +3214,7 @@
         "vadEnable": "Privacybescherming inschakelen (Silero VAD)",
         "vadHelp": "Voert een specifiek neuraal spraakdetectiemodel uit naast de classificator voor betrouwbare spraakfiltering. Verbruikt extra systeembronnen (ongeveer 20-30 MB RAM en CPU-inferentie per segment).",
         "vadThresholdLabel": "Drempelwaarde voor privacybescherming",
-        "vadThresholdHelp": "Gevoeligheidsdrempel voor de spraakactiviteitsdetector (standaard 0.35). Lagere waarden maken het filter gevoeliger voor zachte of verre spraak."
+        "vadThresholdHelp": "Gevoeligheidsdrempel voor de spraakactiviteitsdetector (standaard 0.6). Lagere waarden maken het filter gevoeliger voor zachte of verre spraak."
       },
       "falsePositivePrevention": {
         "title": "Vals Positief Preventie",
@@ -3226,10 +3251,6 @@
       "birdweather": {
         "title": "BirdWeather",
         "description": "Upload herkenningen naar BirdWeather",
-        "ffmpegWarning": {
-          "title": "FFmpeg niet gedetecteerd",
-          "message": "Installeer FFmpeg om FLAC encoding ondersteuning in te schakelen, BirdWeather stopt met WAV uploads ten gunste van gecomprimeerde FLAC audio bestanden."
-        },
         "enable": "Schakel BirdWeather Uploads in",
         "token": {
           "label": "BirdWeather-token",
@@ -3741,6 +3762,8 @@
         "frequencyResponse": "Frequentie Respons",
         "cutoffFrequency": "Afsnij Frequentie",
         "cutoffFrequencyHelp": "Frequentie waarbij de filter signalen begint te verzwakken. Vogelroepen variëren typisch van 1-10 kHz.",
+        "centerFrequency": "Middenfrequentie",
+        "bandwidth": "Bandbreedte",
         "qFactor": "Q-factor",
         "qFactorHelp": "Kwaliteits factor bepaalt de scherpte van de filter. Lagere waarden (0.1-1) creëren zachtere hellingen, hogere waarden (1-10) creëren steilere afsnijdingen.",
         "gain": "Versterking",
@@ -3748,17 +3771,31 @@
         "attenuation": "Verzwakking",
         "attenuationHelp": "Filter rolloff snelheid. Hogere waarden geven steilere verzwakking van gefilterde frequenties.",
         "attenuationLevels": {
-          "0db": "0dB",
+          "off": "Uit",
           "12db": "12dB",
           "24db": "24dB",
           "36db": "36dB",
-          "48db": "48dB"
+          "48db": "48dB",
+          "custom": "{db} dB"
         },
         "filterHelp": "Voeg meerdere filters toe om de frequentie respons te vormen voor optimale vogel detectie in jouw omgeving.",
+        "emptyEntryRestored": "Voer een getal in. De vorige waarde is behouden.",
         "graph": {
           "flatResponse": "Vlakke respons (Geen filters toegepast)",
           "frequency": "Frequentie (Hz)",
-          "gain": "Versterking (dB)"
+          "gain": "Versterking (dB)",
+          "loading": "Frequentierespons berekenen...",
+          "updating": "Frequentierespons bijwerken...",
+          "error": "De frequentierespons kon niet worden berekend. Deze wordt bijgewerkt wanneer je een filter wijzigt of Opnieuw proberen kiest.",
+          "sampleRate": "Berekend voor een samplefrequentie van {rate} Hz.",
+          "clipped": "De respons piekt op {peak} dB, boven de bovenkant van de grafiek.",
+          "skippedHeading": "{count, plural, one {# filter wordt niet op de audio toegepast} other {# filters worden niet op de audio toegepast}}",
+          "skippedReasons": {
+            "unknown_type": "Filter {number} ({type}, {frequency} Hz) wordt overgeslagen: dit filtertype wordt niet ondersteund.",
+            "invalid_parameters": "Filter {number} ({type}, {frequency} Hz) wordt overgeslagen: de instellingen zijn niet geldig bij {rate} Hz.",
+            "add_failed": "Filter {number} ({type}, {frequency} Hz) wordt overgeslagen: het kon niet aan de filterketen worden toegevoegd.",
+            "unknown": "Filter {number} ({type}, {frequency} Hz) wordt overgeslagen."
+          }
         }
       },
       "soundLevelMonitoring": {
@@ -3927,7 +3964,7 @@
       "allowSubnetBypassLabel": "Sta Toegang vanaf Subnet toe om Authenticatie te Omzeilen",
       "subnetBypassLocalNote": "Wanneer ingeschakeld worden clients in hetzelfde lokale netwerk als deze server automatisch vertrouwd en slaan ze de login over. Gebruik het onderstaande veld alleen om dat vertrouwen uit te breiden naar aanvullende netwerken (bijvoorbeeld een apart VLAN of een gerouteerd subnet).",
       "allowedSubnetsLabel": "Toegestane Subnets",
-      "allowedSubnetsHelp": "Aanvullende netwerkbereiken die de login mogen omzeilen, naast het eigen lokale netwerk van deze server. CIDR-notatie, gescheiden door komma's.",
+      "allowedSubnetsHelp": "Aanvullende netwerkbereiken die de login mogen omzeilen, naast het eigen lokale netwerk van deze server. Gebruik CIDR-notatie, zoals 192.168.10.0/24.",
       "securityWarningTitle": "Beveiligings Waarschuwing:",
       "subnetWarningText": "Het lokale netwerk van deze server en alle hier vermelde subnetten krijgen volledige toegang zonder in te loggen. Voeg alleen netwerken toe die u volledig vertrouwt.",
       "httpsSettingsTitle": "HTTPS Instellingen",
@@ -4155,11 +4192,81 @@
         "downloadCertificate": "Certificaat downloaden",
         "downloadCertificateHelp": "Installeer dit certificaat in het vertrouwensarchief van je besturingssysteem om beveiligingswaarschuwingen van de browser te voorkomen.",
         "fileReadError": "Kan het geselecteerde bestand niet lezen"
+      },
+      "reverseProxy": {
+        "title": "Omgekeerde proxy",
+        "description": "Voor toegang via nginx, Caddy, Traefik, Cloudflare of een andere proxy",
+        "listLabel": "Vertrouwde proxy's",
+        "listHelp": "Voeg het adres toe van elke proxy vóór BirdNET-Go. Bij Docker is dit vaak het Docker-gatewayadres, zoals 172.17.0.1.",
+        "placeholder": "Bijvoorbeeld 172.17.0.1",
+        "emptyState": "Geen vertrouwde proxy's. BirdNET-Go gebruikt het adres dat ermee verbindt.",
+        "emptyStateCloudflareOnly": "Alleen de gepubliceerde edge-adressen van Cloudflare worden vertrouwd. Er zijn geen andere proxy's opgegeven.",
+        "rangeBadge": "Bereik",
+        "ruleOwnAddress": "Vermeld het eigen adres van elke proxy. Vermeld nooit een bereik dat ook de computers bevat waarmee u browst.",
+        "ruleHeaders": "De proxy moet het clientadres toevoegen aan X-Forwarded-For of X-Real-IP overschrijven.",
+        "cloudflareLabel": "Cloudflare vertrouwen",
+        "cloudflareHelp": "Schakel dit in wanneer uw site via Cloudflare wordt aangeboden. BirdNET-Go vertrouwt dan de gepubliceerde edge-adressen van Cloudflare.",
+        "check": {
+          "title": "Uw verbinding",
+          "recheck": "Opnieuw controleren",
+          "checking": "Uw verbinding wordt gecontroleerd",
+          "error": "Kon uw verbinding niet controleren.",
+          "stale": "Deze controle toont de opgeslagen instellingen. Sla op om uw wijzigingen te controleren.",
+          "trust": "{peer} vertrouwen",
+          "trustWarning": "Vertrouw {peer} alleen als dit uw reverse proxy is, niet de computer waarmee u browst.",
+          "trustWithCloudflare": "{peer} en Cloudflare vertrouwen",
+          "cloudflareInFront": "Cloudflare bevindt zich vóór {peer}. Vertrouw beide om uw adres te verifiëren.",
+          "cloudflareEdge": "{peer} is van Cloudflare. Schakel hieronder Cloudflare vertrouwen in.",
+          "chainHint": "Als er zich nog een proxy vóór {peer} bevindt, vermeld deze dan ook.",
+          "added": "Aan de lijst toegevoegd. Sla op om toe te passen.",
+          "coveredBy": "Al gedekt door {range} in de lijst. Sla op om toe te passen.",
+          "selfClientCause": "De proxy stuurt mogelijk zijn eigen adres door als client, vaak omdat het publiceren van containerpoorten de echte client verbergt. Los dit op in de netwerkinstellingen van de container of proxy."
+        },
+        "status": {
+          "direct": {
+            "title": "Rechtstreeks verbonden",
+            "body": "Uw browser verbindt rechtstreeks met BirdNET-Go vanaf {peer}.",
+            "bodyNoPeer": "Uw browser verbindt rechtstreeks met BirdNET-Go.",
+            "hint": "Als u een reverse proxy gebruikt en {peer} is het adres ervan, stel de proxy dan in om X-Forwarded-For te verzenden."
+          },
+          "trusted_proxy": {
+            "title": "Verbonden via een vertrouwde proxy",
+            "body": "Uw verbinding verloopt via {peer}, die wordt vertrouwd. Uw adres {client} is geverifieerd.",
+            "hint": "Als {client} een andere proxy is in plaats van uw computer, vermeld die proxy dan ook."
+          },
+          "trusted_proxy_unverified": {
+            "title": "Uw adres kon niet worden geverifieerd",
+            "body": "{peer} wordt vertrouwd, maar het adres dat deze doorstuurt kon niet worden geverifieerd. Veelvoorkomende oorzaken:",
+            "causeRange": "Een vermeld bereik bevat ook uw computer, waardoor geen enkel adres in de keten als het uwe telt.",
+            "causeHeaders": "De proxy voegt X-Forwarded-For niet toe en overschrijft X-Real-IP niet.",
+            "causeConflict": "De proxy verzendt conflicterende of herhaalde adresheaders, of alleen een Forwarded-header."
+          },
+          "untrusted_public_proxy": {
+            "title": "Verbonden via een openbare proxy",
+            "body": "Uw verbinding verloopt via {peer}, een openbaar adres. Openbare adressen worden nooit aangeboden om met één klik te vertrouwen. Voeg er alleen handmatig een toe als u zeker weet dat het uw proxy is."
+          },
+          "untrusted_proxy": {
+            "title": "Verbonden via een niet-vertrouwde proxy",
+            "body": "Uw verbinding verloopt via een proxy op {peer} die niet wordt vertrouwd, waardoor BirdNET-Go uw adres niet kan verifiëren."
+          },
+          "untrusted_proxy_unverifiable": {
+            "title": "Proxyheaders kunnen niet worden geverifieerd",
+            "body": "Uw verbinding verloopt via {peer}, maar de verzonden adresheaders konden niet worden geverifieerd, zelfs als deze werd vertrouwd.",
+            "bodyNoPeer": "Uw verbinding verloopt via een proxy, maar het adres ervan kon niet worden gelezen.",
+            "fix": "Stel de proxy in om X-Forwarded-For toe te voegen of X-Real-IP te overschrijven."
+          }
+        }
+      },
+      "bypassProxyNote": "Achter een reverse proxy werkt deze omzeiling alleen wanneer de proxy als vertrouwd is vermeld.",
+      "bypassProxyLink": "Vertrouwde proxy's instellen",
+      "allowedSubnetsEmpty": "Geen aanvullende subnetten. Alleen het eigen lokale netwerk van deze server mag de login omzeilen.",
+      "validation": {
+        "invalidEntry": "{tab}: {field} bevat een ongeldige invoer.",
+        "pendingEntry": "{tab}: {field} bevat tekst die niet is toegevoegd. Druk op Enter of Toevoegen, of wis de tekst."
       }
     },
     "species": {
       "pageLabel": "Soortinstellingen",
-      "saveError": "Opslaan van configuratie voor \"{species}\" mislukt. Probeer het opnieuw.",
       "configUpdated": "Configuratie voor \"{species}\" bijgewerkt",
       "configAdded": "Configuratie voor \"{species}\" toegevoegd",
       "duplicateConfigError": "Soort \"{species}\" heeft al een configuratie. Kies een andere naam.",
@@ -4914,6 +5021,28 @@
         "edit": "Bewerk soort",
         "remove": "Verwijder soort"
       }
+    },
+    "networkAddressList": {
+      "add": "Toevoegen",
+      "remove": "Verwijder {address}",
+      "empty": "Nog geen adressen toegevoegd.",
+      "pendingHint": "Druk op Enter of Toevoegen om dit adres toe te voegen.",
+      "limitReached": "De lijst is vol ({max} vermeldingen).",
+      "rowDuplicate": "Duplicaat",
+      "rowInvalid": {
+        "cidr": "Geen geldig bereik",
+        "ip": "Geen geldig IP-adres",
+        "ipOrCidr": "Geen geldig adres of bereik"
+      },
+      "errors": {
+        "invalid": {
+          "cidr": "Geen geldig bereik: {values}. Gebruik een bereik zoals 192.168.1.0/24.",
+          "ip": "Geen geldig IP-adres: {values}. Gebruik een adres zoals 192.168.1.10.",
+          "ipOrCidr": "Geen geldig adres of bereik: {values}. Gebruik een adres zoals 192.168.1.10 of een bereik zoals 192.168.1.0/24."
+        },
+        "duplicate": "Staat al in de lijst: {values}.",
+        "limit": "De lijst bevat maximaal {max} vermeldingen. Niet toegevoegd: {values}."
+      }
     }
   },
   "media": {
@@ -4940,6 +5069,7 @@
       "loop": "Herhaling aan/uit",
       "player": "Audiospeler",
       "autoplayBlocked": "Klik om af te spelen (autoplay geblokkeerd)",
+      "hlsLoadFailed": "De audiospeler kon niet worden geladen, laad de pagina opnieuw en probeer het nogmaals",
       "hlsNotSupported": "HLS-weergave wordt niet ondersteund in deze browser",
       "streamStarting": "Audiostream wordt gestart...",
       "levelFor": "Audioniveau voor {source}",
@@ -5174,6 +5304,9 @@
       "invalidJSON": "Ongeldige JSON",
       "invalidEscalation": "Escalatiestappen zijn ongeldig",
       "engineUnavailable": "Alerting-engine is niet beschikbaar"
+    },
+    "insights": {
+      "v2Required": "Inzichten vereisen de uitgebreide (v2) database"
     },
     "detection": {
       "invalidDate": "Ongeldig {paramName}-formaat, gebruik JJJJ-MM-DD"

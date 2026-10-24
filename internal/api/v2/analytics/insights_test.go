@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/tphakala/birdnet-go/internal/api/v2/apicore"
 	"github.com/tphakala/birdnet-go/internal/conf"
+	datastoreV2 "github.com/tphakala/birdnet-go/internal/datastore/v2"
 	"github.com/tphakala/birdnet-go/internal/datastore/v2/repository"
 )
 
@@ -26,6 +27,11 @@ type mockInsightsRepo struct {
 	goneQuiet       []repository.GoneQuietSpecies
 	dashboardKPIs   *repository.DashboardKPIs
 	err             error
+
+	// modelContributionStats is returned by GetModelContributionStats; lastStart and lastEnd
+	// record the range the handler forwarded.
+	modelContributionStats *repository.ModelContributionStats
+	lastStart, lastEnd     int64
 
 	// lastTzOffsetSeconds records the most recent timezone offset forwarded by a handler, so
 	// tests can assert the handler actually threads analyticsTZOffset into the repository rather
@@ -51,6 +57,11 @@ func (m *mockInsightsRepo) GetNewArrivals(_ context.Context, _ int64, _ *uint) (
 
 func (m *mockInsightsRepo) GetGoneQuiet(_ context.Context, _ int64, _ int, _ *uint) ([]repository.GoneQuietSpecies, error) {
 	return m.goneQuiet, m.err
+}
+
+func (m *mockInsightsRepo) GetModelContributionStats(_ context.Context, start, end int64) (*repository.ModelContributionStats, error) {
+	m.lastStart, m.lastEnd = start, end
+	return m.modelContributionStats, m.err
 }
 
 func (m *mockInsightsRepo) GetDashboardKPIs(_ context.Context, _ int64, tzOffsetSeconds int, _ *uint) (*repository.DashboardKPIs, error) {
@@ -230,6 +241,11 @@ func TestInsightsEndpointContextErrors(t *testing.T) {
 			name:   "migration",
 			path:   "/api/v2/insights/migration",
 			invoke: func(c *Handler, ctx echo.Context) error { return c.getMigrationImpl(ctx) },
+		},
+		{
+			name:   "model contributions",
+			path:   "/api/v2/insights/model-contributions?start_date=2026-03-01",
+			invoke: func(c *Handler, ctx echo.Context) error { return c.getModelContributionStatsImpl(ctx) },
 		},
 		{
 			name:   "dashboard kpis",
@@ -457,6 +473,50 @@ func TestGetDawnChorus_RejectsMalformedDays(t *testing.T) {
 			ctx := e.NewContext(req, rec)
 			_ = controller.getDawnChorusImpl(ctx)
 			assert.Equal(t, http.StatusBadRequest, rec.Code)
+		})
+	}
+}
+
+// TestInsightsHandlersReturn409WithoutEnhancedDatabase pins the guard on every
+// gated insights wrapper: status 409 with the insights message and error key.
+func TestInsightsHandlersReturn409WithoutEnhancedDatabase(t *testing.T) {
+	// Not parallel: this test reads the process-global database mode flag and
+	// forces it to the legacy state, restoring it when done.
+	datastoreV2.ResetDatabaseMode()
+	t.Cleanup(datastoreV2.ResetDatabaseMode)
+
+	tests := []struct {
+		name   string
+		path   string
+		invoke func(*Handler, echo.Context) error
+	}{
+		{"expected today", "/api/v2/insights/expected-today", (*Handler).GetExpectedToday},
+		{"expected today regional", "/api/v2/insights/expected-today/regional", (*Handler).GetExpectedTodayRegional},
+		{"phantom species", "/api/v2/insights/phantom-species", (*Handler).GetPhantomSpecies},
+		{"dawn chorus", "/api/v2/insights/dawn-chorus", (*Handler).GetDawnChorus},
+		{"migration", "/api/v2/insights/migration", (*Handler).GetMigration},
+		{"model contributions", "/api/v2/insights/model-contributions?start_date=2026-03-01", (*Handler).GetModelContributionStats},
+		{"dashboard kpis", "/api/v2/dashboard/kpis", (*Handler).GetDashboardKPIs},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			// With a failing repo, a wrapper that lost its guard falls through to
+			// its Impl and answers something other than 409 instead of panicking.
+			e, h := setupInsightsTestController(t, &mockInsightsRepo{err: context.DeadlineExceeded})
+			req := httptest.NewRequest(http.MethodGet, tc.path, http.NoBody)
+			rec := httptest.NewRecorder()
+			ctx := e.NewContext(req, rec)
+
+			require.NoError(t, tc.invoke(h, ctx))
+			assert.Equal(t, http.StatusConflict, rec.Code)
+
+			var resp apicore.ErrorResponse
+			require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+			// Literals, not the production constants, so a changed constant
+			// value fails here. They match errors.insights.v2Required in en.json.
+			assert.Equal(t, "errors.insights.v2Required", resp.ErrorKey)
+			assert.Equal(t, "Insights require the enhanced (v2) database", resp.Message)
 		})
 	}
 }
