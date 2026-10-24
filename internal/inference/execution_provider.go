@@ -129,7 +129,7 @@ var appendCUDAProvider = func(so *ortlib.SessionOptions, deviceID int) error {
 const (
 	cudaHintBuild = "the ONNX Runtime library in use has no CUDA execution provider: " +
 		"use the BirdNET-Go CUDA container image (a -cuda tag) or install the ONNX Runtime GPU package " +
-		"(onnxruntime-linux-x64-gpu " + RequiredORTAPIMajor + ".x) and point onnxruntimepath at it"
+		"(onnxruntime-linux-x64-gpu_cuda12, 1.29 or newer) and point onnxruntimepath at it"
 	cudaHintLibraries = "CUDA 12 and cuDNN 9 runtime libraries could not be loaded: " +
 		"use the BirdNET-Go CUDA container image, or install the CUDA 12 runtime, cuBLAS, cuFFT, cuRAND and cuDNN 9 " +
 		"and make them visible to the dynamic loader (ldconfig or LD_LIBRARY_PATH)"
