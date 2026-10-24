@@ -1,12 +1,14 @@
 package inference
 
 // Support for NVIDIA GPUs older than Volta (compute capability < 7.0, e.g.
-// Pascal: GTX 10xx, Quadro P-series). Official ONNX Runtime GPU releases only
-// contain kernels for sm_70+, and cuDNN 9.5+ has no Pascal kernels, so on these
-// cards the CUDA provider registers fine and then fails on the first inference
-// with "no kernel image is available for execution on the device". The fix is a
-// different image (Docker/cuda-sm61: ONNX Runtime built for sm_61 + cuDNN 9.1),
-// not a code change; this file only makes the failure explain itself and warns
+// Pascal: GTX 10xx, Quadro P-series). Tested on a Quadro P1000 (sm_61): the
+// standard CUDA image works there, because ONNX Runtime's CUDA provider carries
+// PTX the driver JIT-compiles for sm_61 at load and cuDNN 9.10 reaches Pascal
+// through its runtime-compiled (NVRTC) engines. That depends on what a given
+// ONNX Runtime / cuDNN build still ships: a cuDNN without Pascal engines fails
+// on the first inference with "no kernel image is available for execution on
+// the device". Docker/cuda-sm61 removes the dependency (native sm_61 kernels,
+// cuDNN 9.1 pinned). This file makes that failure explain itself and warns
 // about FP16 models, which Pascal runs slowly and with degraded accuracy.
 
 import (
@@ -23,9 +25,8 @@ import (
 
 // cudaHintArch is the troubleshooting hint for a GPU older than the kernels in
 // the ONNX Runtime / cuDNN build.
-const cudaHintArch = "this GPU is older than the kernels in the ONNX Runtime/cuDNN build " +
-	"(official ONNX Runtime GPU releases need compute capability 7.0+, cuDNN 9.5+ dropped Pascal): " +
-	"for Pascal cards (GTX 10xx, Quadro P-series, compute capability 6.x) use the cuda-sm61 image " +
+const cudaHintArch = "the ONNX Runtime or cuDNN build in use has no kernels for this GPU's architecture: " +
+	"for older cards (Pascal: GTX 10xx, Quadro P-series, compute capability 6.x) use the cuda-sm61 image " +
 	"(Docker/cuda-sm61: ONNX Runtime built for sm_61 with cuDNN 9.1), or set birdnet.onnxprovider to cpu"
 
 // isCUDAArchMismatch reports whether a lower-cased ONNX Runtime error says the

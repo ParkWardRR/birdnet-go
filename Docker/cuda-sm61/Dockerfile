@@ -1,13 +1,13 @@
 # Pascal (compute capability 6.x, e.g. Quadro P1000 / GTX 10xx) variant of the
 # BirdNET-Go CUDA image.
 #
-# The standard CUDA image (./Dockerfile with BASE_IMAGE=runtime-base-cuda) ships
-# the official ONNX Runtime GPU release, which has kernels for sm_70+ only, and
-# cuDNN 9 from NVIDIA's CUDA runtime image, whose current releases (9.5+) have no
-# Pascal kernels. On a Pascal card the CUDA provider registers and then fails on
-# the first inference ("no kernel image is available for execution on the
-# device"). This file layers two replacements on top of that image and changes
-# nothing else:
+# The standard CUDA image (./Dockerfile with BASE_IMAGE=runtime-base-cuda) also
+# runs on a Quadro P1000 today: the official ONNX Runtime GPU build carries PTX
+# the driver JIT-compiles for sm_61 when each model loads, and cuDNN 9.10.2
+# reaches Pascal through its runtime-compiled engines. That depends on what the
+# next ONNX Runtime / cuDNN bump still ships for Pascal, and the JIT costs 1-4 s
+# per model load. This file pins a known-good Pascal stack instead, by layering
+# two replacements on top of that image (nothing else changes):
 #   - ONNX Runtime ${ONNXRUNTIME_VERSION} built from source for sm_61
 #     (build-ort-sm61.sh; ~80 min on 5 cores), same version as the base so the
 #     Go bindings' C API matches
