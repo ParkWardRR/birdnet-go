@@ -248,8 +248,8 @@ func TestVAD_StreamingCoverageParity(t *testing.T) {
 	}
 
 	cfg := Config{ModelPath: modelPath, LibraryPath: libPath}
-	baseProbs := fullChunkProbs(t, cfg, pcm)
-	streamProbs := streamingProbs(t, cfg, pcm)
+	baseProbs := fullChunkProbs(t, &cfg, pcm)
+	streamProbs := streamingProbs(t, &cfg, pcm)
 	baseMax := maxOf(baseProbs)
 	streamMax := maxOf(streamProbs)
 	baseCover := fractionAtOrAbove(baseProbs, parityThreshold)
@@ -278,8 +278,8 @@ func TestVAD_StreamingNoiseFPParity(t *testing.T) {
 	pcm := noisePCM16(10, sampleRate16k, 42)
 
 	cfg := Config{ModelPath: modelPath, LibraryPath: libPath}
-	baseMax := maxOf(fullChunkProbs(t, cfg, pcm))
-	streamMax := maxOf(streamingProbs(t, cfg, pcm))
+	baseMax := maxOf(fullChunkProbs(t, &cfg, pcm))
+	streamMax := maxOf(streamingProbs(t, &cfg, pcm))
 	t.Logf("noise: full-chunk max=%.4f streaming max=%.4f", baseMax, streamMax)
 
 	assert.Less(t, baseMax, float32(parityThreshold), "noise must not trip the full-chunk path")
@@ -311,9 +311,9 @@ func fractionAtOrAbove(probs []float32, threshold float64) float64 {
 
 // fullChunkProbs scores pcm as independent full 3 s chunks every 0.5 s (the old
 // gate behaviour) and returns every per-chunk aggregate probability.
-func fullChunkProbs(t *testing.T, cfg Config, pcm []byte) []float32 {
+func fullChunkProbs(t *testing.T, cfg *Config, pcm []byte) []float32 {
 	t.Helper()
-	d, err := New(cfg)
+	d, err := New(*cfg)
 	require.NoError(t, err)
 	t.Cleanup(func() { assert.NoError(t, d.Close()) })
 
@@ -329,9 +329,9 @@ func fullChunkProbs(t *testing.T, cfg Config, pcm []byte) []float32 {
 // streamingProbs feeds pcm through a Streamer exactly as the gate does: 0.5 s of
 // fresh audio per step, a Flush every parityFlushEvery steps against one shared
 // session, and returns every per-flush aggregate probability.
-func streamingProbs(t *testing.T, cfg Config, pcm []byte) []float32 {
+func streamingProbs(t *testing.T, cfg *Config, pcm []byte) []float32 {
 	t.Helper()
-	sess, err := NewSession(cfg)
+	sess, err := NewSession(*cfg)
 	require.NoError(t, err)
 	t.Cleanup(func() { assert.NoError(t, sess.Close()) })
 	st := NewStreamer(0)
@@ -402,8 +402,8 @@ func TestVAD_EmbeddedStreamingParity(t *testing.T) {
 	require.NoError(t, probe.Close())
 
 	pcm := speechLikePCM16(6, sampleRate16k)
-	baseMax := maxOf(fullChunkProbs(t, cfg, pcm))
-	streamMax := maxOf(streamingProbs(t, cfg, pcm))
+	baseMax := maxOf(fullChunkProbs(t, &cfg, pcm))
+	streamMax := maxOf(streamingProbs(t, &cfg, pcm))
 	t.Logf("embedded: full-chunk max=%.4f streaming max=%.4f", baseMax, streamMax)
 
 	require.GreaterOrEqual(t, baseMax, float32(parityThreshold),

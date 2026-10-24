@@ -118,7 +118,7 @@ func NewSession(cfg Config) (SpeechSession, error) {
 			Context("stage", "ort_init").
 			Build()
 	}
-	return newSession(cfg.ModelPath, cfg.ModelData, nil)
+	return newSessionForProvider(&cfg)
 }
 
 // newSession creates a Silero VAD sequence session. The model is loaded from

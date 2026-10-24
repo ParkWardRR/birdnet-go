@@ -81,6 +81,11 @@ type Config struct {
 	// MinConsecutiveFrames is the sustain requirement for the aggregator. <= 0
 	// uses the default.
 	MinConsecutiveFrames int
+	// Provider is the ONNX Runtime execution provider: "" or "cpu" for the CPU,
+	// "cuda" for an NVIDIA GPU (falls back to the CPU if CUDA is unavailable).
+	Provider string
+	// CUDADeviceID is the CUDA device ordinal used when Provider is "cuda".
+	CUDADeviceID int
 }
 
 // resolveMinConsec returns the effective sustain requirement for cfg.

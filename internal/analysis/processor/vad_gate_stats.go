@@ -47,6 +47,7 @@ type VADStatus struct {
 // coarse source label reported to operators and the dashboard, without leaking
 // the on-disk path.
 func vadSourceLabel(cacheKey string) string {
+	cacheKey, _, _ = strings.Cut(cacheKey, vadCUDAKeySep)
 	if strings.HasPrefix(cacheKey, "path:") {
 		return "path"
 	}

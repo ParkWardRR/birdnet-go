@@ -369,6 +369,7 @@ func (p *Processor) runVADGate(settings *conf.Settings, item *classifier.Results
 	}
 
 	cfg, cacheKey := resolveVADModel(&pf.VAD, settings.BirdNET.ONNXRuntimePath)
+	cacheKey = withVADProvider(&cfg, cacheKey, &settings.BirdNET)
 	if cacheKey == "" {
 		// Enabled but no model resolves. The embedded model is compiled into every
 		// build and an unset modelpath falls through to it, so this branch is now
