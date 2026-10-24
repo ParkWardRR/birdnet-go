@@ -145,7 +145,7 @@ func probeNodePlacement(modelPath string, inputNames, outputNames []string, mode
 	if err != nil {
 		return nil, err
 	}
-	probe := &Classifier{session: session, config: *modelCfg}
+	probe := &Classifier{session: guardedSession{s: session}, config: *modelCfg}
 
 	_, _, runErr := probe.PredictRawWithEmbeddings(make([]float32, modelCfg.SampleCount))
 	// Destroying the session flushes the profile to disk.
