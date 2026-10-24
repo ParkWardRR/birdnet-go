@@ -26,7 +26,7 @@
 # Use FP32 model variants: Pascal has no fast FP16.
 
 ARG BASE=localhost/birdnet-go:cuda
-ARG ONNXRUNTIME_VERSION=1.25.1
+ARG ONNXRUNTIME_VERSION=1.31.0
 ARG CUDA_DEVEL_IMAGE=docker.io/nvidia/cuda:12.9.1-devel-ubuntu22.04
 ARG CUDNN_VERSION=9.1.0.70
 ARG CUDNN_SHA256=fdc6d6f28217b82c400adfdae8f0364fa36c5fb6cb683933e8900a748e70b263

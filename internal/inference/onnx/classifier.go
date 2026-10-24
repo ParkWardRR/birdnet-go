@@ -311,9 +311,6 @@ func createSession(modelPath string, inputNames, outputNames []string, sessionOp
 	if err := applySessionDefaults(sessOpts); err != nil {
 		return nil, err
 	}
-	if err := DisableKleidiAIIfNeeded(sessOpts); err != nil {
-		return nil, err
-	}
 
 	if sessionOptsFn != nil {
 		if err := sessionOptsFn(sessOpts); err != nil {

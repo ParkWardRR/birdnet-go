@@ -12,13 +12,13 @@ ARG TENSORFLOW_VERSION=2.17.1
 # sync with TENSORFLOW_VERSION (headers) and the Taskfile TFLITE_VERSION var; the
 # runtime-base stage downloads the matching prebuilt libtensorflowlite_c.so.
 ARG TFLITE_VERSION=v2.17.1
-ARG ONNXRUNTIME_VERSION=1.25.1
+ARG ONNXRUNTIME_VERSION=1.31.0
 # NVIDIA CUDA image variant (amd64 only; see the runtime-base-cuda stage). The GPU
 # build of ONNX Runtime must match ONNXRUNTIME_VERSION; its SHA256 is verified
 # before extraction. The CUDA libraries it links (CUDA 12 runtime, cuBLAS, cuFFT,
 # cuRAND, NVRTC and cuDNN 9) are copied from NVIDIA's official CUDA runtime image,
 # pinned by digest. Bump both together when ONNXRUNTIME_VERSION moves.
-ARG ONNXRUNTIME_GPU_SHA256=ddfc4ca4ccc9cd5345d3820edab710ee84e749569d052eed92c42693d3b448a8
+ARG ONNXRUNTIME_GPU_SHA256=62d3af5269af2143b5d37494337573f1ffb8885f3ad7477ae0cb1cc79c8dedfd
 ARG CUDA_RUNTIME_IMAGE=nvidia/cuda:12.9.1-cudnn-runtime-ubuntu24.04@sha256:d02c4310b6d57ca0b16cd80298bdb33a74187baafe2eccd8a6a16180ddc90802
 # OpenVINO toolkit pin for the runtime libraries bundled into the images. Keep the
 # release/build in sync with the Taskfile OPENVINO_RELEASE / OPENVINO_BUILD values;
@@ -427,7 +427,7 @@ RUN set -eu; \
     if [ "${TARGETPLATFORM}" != "linux/amd64" ]; then \
         echo "Error: the CUDA image variant supports linux/amd64 only, got ${TARGETPLATFORM}" >&2; exit 1; \
     fi; \
-    ORT_BASE="onnxruntime-linux-x64-gpu-${ONNXRUNTIME_VERSION}"; \
+    ORT_BASE="onnxruntime-linux-x64-gpu_cuda12-${ONNXRUNTIME_VERSION}"; \
     echo "Downloading ONNX Runtime GPU ${ONNXRUNTIME_VERSION}"; \
     curl -fsSL "https://github.com/microsoft/onnxruntime/releases/download/v${ONNXRUNTIME_VERSION}/${ORT_BASE}.tgz" \
         -o /tmp/onnxruntime-gpu.tgz; \
@@ -489,6 +489,11 @@ FROM models-${TARGETARCH} AS models
 # the top of this file.
 # ============================================================================
 FROM ${BASE_IMAGE} AS final
+
+# ONNX Runtime 1.29+ official Linux builds send Microsoft telemetry unless
+# ORT_DISABLE_TELEMETRY is set before the library loads. BirdNET-Go also sets
+# it in-process; this covers anything else in the image that loads ORT.
+ENV ORT_DISABLE_TELEMETRY=1
 
 # Copy the arch-selected stock models, then normalize permissions explicitly.
 # Do NOT use `COPY --chmod` here: when the source is a stage root, BuildKit applies
