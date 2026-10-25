@@ -7,6 +7,9 @@
 #   - flash/memory-efficient/lean attention need sm_80+ and are disabled
 #   - the FpA-IntB GEMM (int4 LLM matmul, sm_75+) is disabled: from ORT 1.31 it
 #     otherwise leaves an undefined symbol in libonnxruntime_providers_cuda.so
+#   - sm_75 is built too (ORT 1.31+): the LLM/MoE kernel library is compiled
+#     only for sm_75+, and an sm_61-only build leaves its symbols undefined.
+#     That code never runs on Pascal; the models here don't use those ops
 set -eu
 ORT_VERSION="${ORT_VERSION:-1.25.1}"
 PARALLEL="${PARALLEL:-4}"
@@ -21,7 +24,7 @@ cd onnxruntime
 ./build.sh --config Release --build_shared_lib --parallel "${PARALLEL}" --nvcc_threads 1 \
   --use_cuda --cuda_home /usr/local/cuda --cudnn_home /opt/cudnn \
   --cmake_generator Ninja --skip_tests --allow_running_as_root --compile_no_warning_as_error \
-  --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=61 onnxruntime_BUILD_UNIT_TESTS=OFF \
+  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=61;75" onnxruntime_BUILD_UNIT_TESTS=OFF \
     onnxruntime_USE_FLASH_ATTENTION=OFF onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION=OFF \
     onnxruntime_USE_LEAN_ATTENTION=OFF onnxruntime_USE_FPA_INTB_GEMM=OFF "CMAKE_CUDA_FLAGS=-Wno-deprecated-gpu-targets"
 mkdir -p /out
